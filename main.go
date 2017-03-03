@@ -46,6 +46,7 @@ func main() {
 	cert := flag.String("cert", "", "TLS client PEM encoded certificate file")
 	ka := flag.Bool("ka", false, "Use keep alive")
 	c := flag.Int("c", 0, "The total number of requests (0 - unlimit)")
+	t := flag.Duration("t", 5 * time.Second, "Timeout per request")
 
 	flag.Parse()
 
@@ -71,6 +72,7 @@ func main() {
 	for i := 0; i < *n; i++ {
 		go func() {
 			client := &http.Client{
+				Timeout: *t,
 				Transport: &http.Transport{
 					DisableKeepAlives:  !*ka,
 					DisableCompression: true,
