@@ -42,11 +42,12 @@ var (
 
 func main() {
 	url := flag.String("url", "", "Fetching url")
-	n := flag.Int("n", 50, "Number of multiple requests to make at a time")
+	c := flag.Int("c", 50, "Number of multiple requests to make at a time")
 	cert := flag.String("cert", "", "TLS client PEM encoded certificate file")
 	ka := flag.Bool("ka", false, "Use keep alive")
-	c := flag.Int("c", 0, "The total number of requests (0 - unlimit)")
+	n := flag.Int("n", 0, "The total number of requests (0 - unlimit)")
 	t := flag.Duration("t", 5 * time.Second, "Timeout per request")
+	rt := flag.Duration("rt", 0, "Run time of benchmark (0 - unlimit)")
 
 	flag.Parse()
 
@@ -65,11 +66,12 @@ func main() {
 		log.Printf("Cert '%s' will be used", *cert)
 	}
 
-	log.Printf("Start load test for url '%s' with %d concurency (keep-alive: %v)", *url, *n, *ka)
+	log.Printf("Start load test for url '%s' with %d concurency (keep-alive: %v)", *url, *c, *ka)
 
 	lastDt = time.Now()
 
-	for i := 0; i < *n; i++ {
+	tStart := time.Now()
+	for i := 0; i < *c; i++ {
 		go func() {
 			client := &http.Client{
 				Timeout: *t,
@@ -81,31 +83,34 @@ func main() {
 			}
 
 			for {
-				start := time.Now()
-				if *c > 0 {
-					if atomic.LoadUint64(&reqCountTotal) >= uint64(*c) {
+				rStart := time.Now()
+				if *n > 0 {
+					if atomic.LoadUint64(&reqCountTotal) >= uint64(*n) {
 						break
 					}
 					atomic.AddUint64(&reqCountTotal, 1)
+				}
+				if *rt > 0 && time.Since(tStart) > *rt {
+					break
 				}
 				resp, err := client.Get(*url)
 
 				code, length := 0, 0
 				if err != nil {
-					log.Printf("error: %s", err)
+					//log.Printf("error: %s", err)
 				} else {
 					data, err := ioutil.ReadAll(resp.Body)
 					resp.Body.Close()
 
 					if err != nil {
-						log.Printf("Error: %s", err)
+						//log.Printf("Error: %s", err)
 					}
 
 					code = resp.StatusCode
 					length += len(data)
 				}
 
-				rt := int64(time.Now().Sub(start))
+				rt := int64(time.Now().Sub(rStart))
 
 				m.Lock()
 				respSize += uint64(length)
@@ -157,7 +162,10 @@ func main() {
 
 		m.Unlock()
 
-		if *c > 0 && atomic.LoadUint64(&reqCountTotal) >= uint64(*c) {
+		if *n > 0 && atomic.LoadUint64(&reqCountTotal) >= uint64(*n) {
+			break
+		}
+		if *rt > 0 && time.Since(tStart) > *rt {
 			break
 		}
 	}
